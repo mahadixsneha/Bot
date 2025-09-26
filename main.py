@@ -4,22 +4,21 @@ from flask import Flask, request
 import os
 
 # Config
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Render secret
-IMGBB_KEY = os.environ.get("IMGBB_KEY")  # Render secret
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "7936924851"))  # Render secret
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+IMGBB_KEY = os.environ.get("IMGBB_KEY")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "7936924851"))
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# /start বা /help কমান্ড
+# /start বা /help কমান্ড (ইউজারের জন্য)
 @bot.message_handler(commands=['start', 'help'])
 def send_help(message):
     bot.reply_to(
         message,
         "👋 হ্যালো!\n\n"
-        "📸 ছবি পাঠান ➝ আমি সেটি imgbb তে আপলোড করে আপনাকে লিংক দিব।\n"
-        "➡️ সাথে ছবি এডমিনের কাছে ফরওয়ার্ড হবে।\n\n"
-        "🔗 যদি টেক্সট/লিংক পাঠান ➝ সেটিও এডমিন পাবে।\n\n"
-        "✅ এই বট প্রাইভেট এবং গ্রুপে কাজ করে!"
+        "📸 ছবি পাঠান ➝ আমি সেটি আপলোড করে direct link আপনাকে দিব।\n"
+        "➡️ ছবিটা এডমিনও দেখতে পারবে।\n"
+        "🔗 টেক্সট বা লিংক পাঠালে শুধু এডমিন পাবে।"
     )
 
 # ছবি হ্যান্ডলার
@@ -29,12 +28,10 @@ def handle_image(message):
         username = message.from_user.username or "NoUsername"
         user_id = message.from_user.id
 
-        # হাই রেজোলিউশন ফটো
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
 
-        # ফটো ডাউনলোড
         img_data = requests.get(file_url).content
 
         # imgbb এ আপলোড
@@ -49,33 +46,24 @@ def handle_image(message):
             url = data["data"]["url"]
             viewer = data["data"]["url_viewer"]
 
-            # ইউজারকে লিংক পাঠানো
+            # ইউজারকে শুধুমাত্র লিংক দেখানো
             bot.send_message(
                 message.chat.id,
-                f"✅ আপনার ছবি আপলোড হয়েছে!\n\n"
-                f"🔗 Direct: {url}\n"
-                f"🌐 Viewer: {viewer}"
+                f"✅ ছবি আপলোড হয়েছে!\n🔗 Direct Link: {url}"
             )
 
-            # এডমিনকে ছবি ফরওয়ার্ড
+            # এডমিনকে ফরওয়ার্ড করা
             bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-
-            # এডমিনকে ইউজার ডিটেইলস
             chat_type = message.chat.type
             chat_info = f"👥 Group: {message.chat.title} (ID: {message.chat.id})" if chat_type in ["group", "supergroup"] else "👤 Private Chat"
             bot.send_message(
                 ADMIN_ID,
-                f"📤 New Upload\n"
-                f"👤 User: @{username} (ID: {user_id})\n"
-                f"{chat_info}\n\n"
-                f"🔗 Direct: {url}\n"
-                f"🌐 Viewer: {viewer}"
+                f"📤 New Upload\n👤 User: @{username} (ID: {user_id})\n{chat_info}"
             )
         else:
-            bot.reply_to(message, "❌ আপলোড ব্যর্থ হয়েছে!")
-
+            bot.send_message(message.chat.id, "❌ Upload failed!")
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Error: {e}")
+        print(f"Error: {e}")
 
 # টেক্সট/লিংক হ্যান্ডলার
 @bot.message_handler(content_types=['text'])
@@ -89,14 +77,11 @@ def handle_text(message):
 
     bot.send_message(
         ADMIN_ID,
-        f"💬 New Message\n"
-        f"👤 User: @{username} (ID: {user_id})\n"
-        f"{chat_info}\n\n📩 {text}"
+        f"💬 New Message\n👤 User: @{username} (ID: {user_id})\n{chat_info}\n\n📩 {text}"
     )
+    # ইউজারকে কিছু দেখাবে না
 
-    bot.reply_to(message, "✅ আপনার মেসেজ এডমিন এর কাছে পাঠানো হয়েছে!")
-
-# Flask Webhook (Render-Ready)
+# Flask webhook setup
 app = Flask(__name__)
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
@@ -109,7 +94,7 @@ def getMessage():
 @app.route("/")
 def webhook():
     bot.remove_webhook()
-    domain = os.environ.get("RENDER_EXTERNAL_URL")  # Render এ ডোমেইন অটো পাওয়া যাবে
+    domain = os.environ.get("RENDER_EXTERNAL_URL")
     bot.set_webhook(url=f"{domain}/{BOT_TOKEN}")
     return "Webhook set!", 200
 
