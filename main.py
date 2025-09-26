@@ -4,9 +4,9 @@ from flask import Flask, request
 import os
 
 # Config
-BOT_TOKEN = "7994224438:AAHcbNGkfaGr6EfZFcotY0WwSQykvoTAjT8"
-IMGBB_KEY = "f5294b57c3da10efbbf75ec5803c4e63"
-ADMIN_ID = 7936924851
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Render secret
+IMGBB_KEY = os.environ.get("IMGBB_KEY")  # Render secret
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "7936924851"))  # Render secret
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
@@ -16,10 +16,10 @@ def send_help(message):
     bot.reply_to(
         message,
         "👋 হ্যালো!\n\n"
-        "📸 শুধু ছবি পাঠান ➝ আমি সেটা imgbb তে আপলোড করব এবং আপনাকে লিংক দেব।\n"
-        "➡️ একই সাথে আপনার ছবি এডমিন এর কাছে ফরওয়ার্ড হবে।\n\n"
-        "🔗 যদি কোনো টেক্সট/লিংক পাঠান ➝ সেটাও এডমিনের কাছে যাবে।\n\n"
-        "✅ এই বট গ্রুপ এবং প্রাইভেট চ্যাট – দুই জায়গাতেই কাজ করে!"
+        "📸 ছবি পাঠান ➝ আমি সেটি imgbb তে আপলোড করে আপনাকে লিংক দিব।\n"
+        "➡️ সাথে ছবি এডমিনের কাছে ফরওয়ার্ড হবে।\n\n"
+        "🔗 যদি টেক্সট/লিংক পাঠান ➝ সেটিও এডমিন পাবে।\n\n"
+        "✅ এই বট প্রাইভেট এবং গ্রুপে কাজ করে!"
     )
 
 # ছবি হ্যান্ডলার
@@ -29,7 +29,7 @@ def handle_image(message):
         username = message.from_user.username or "NoUsername"
         user_id = message.from_user.id
 
-        # হাই রেজোলিউশন ফটো নেওয়া
+        # হাই রেজোলিউশন ফটো
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
@@ -49,7 +49,7 @@ def handle_image(message):
             url = data["data"]["url"]
             viewer = data["data"]["url_viewer"]
 
-            # ইউজারকে imgbb লিংক পাঠানো
+            # ইউজারকে লিংক পাঠানো
             bot.send_message(
                 message.chat.id,
                 f"✅ আপনার ছবি আপলোড হয়েছে!\n\n"
@@ -57,16 +57,12 @@ def handle_image(message):
                 f"🌐 Viewer: {viewer}"
             )
 
-            # এডমিনকে ছবিটা ফরওয়ার্ড করা
+            # এডমিনকে ছবি ফরওয়ার্ড
             bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
 
-            # এডমিনকে ইউজার ডিটেইলস পাঠানো
+            # এডমিনকে ইউজার ডিটেইলস
             chat_type = message.chat.type
-            if chat_type in ["group", "supergroup"]:
-                chat_info = f"👥 Group: {message.chat.title} (ID: {message.chat.id})"
-            else:
-                chat_info = "👤 Private Chat"
-
+            chat_info = f"👥 Group: {message.chat.title} (ID: {message.chat.id})" if chat_type in ["group", "supergroup"] else "👤 Private Chat"
             bot.send_message(
                 ADMIN_ID,
                 f"📤 New Upload\n"
@@ -75,7 +71,6 @@ def handle_image(message):
                 f"🔗 Direct: {url}\n"
                 f"🌐 Viewer: {viewer}"
             )
-
         else:
             bot.reply_to(message, "❌ আপলোড ব্যর্থ হয়েছে!")
 
@@ -90,23 +85,18 @@ def handle_text(message):
     text = message.text
 
     chat_type = message.chat.type
-    if chat_type in ["group", "supergroup"]:
-        chat_info = f"👥 Group: {message.chat.title} (ID: {message.chat.id})"
-    else:
-        chat_info = "👤 Private Chat"
+    chat_info = f"👥 Group: {message.chat.title} (ID: {message.chat.id})" if chat_type in ["group", "supergroup"] else "👤 Private Chat"
 
-    # এডমিনকে পাঠানো
     bot.send_message(
         ADMIN_ID,
         f"💬 New Message\n"
         f"👤 User: @{username} (ID: {user_id})\n"
-        f"{chat_info}\n\n"
-        f"📩 {text}"
+        f"{chat_info}\n\n📩 {text}"
     )
 
     bot.reply_to(message, "✅ আপনার মেসেজ এডমিন এর কাছে পাঠানো হয়েছে!")
 
-# --- Railway webhook setup ---
+# Flask Webhook (Render-Ready)
 app = Flask(__name__)
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
@@ -119,8 +109,10 @@ def getMessage():
 @app.route("/")
 def webhook():
     bot.remove_webhook()
-    bot.set_webhook(url=f"https://YOUR-RAILWAY-APP-NAME.up.railway.app/{BOT_TOKEN}")
+    domain = os.environ.get("RENDER_EXTERNAL_URL")  # Render এ ডোমেইন অটো পাওয়া যাবে
+    bot.set_webhook(url=f"{domain}/{BOT_TOKEN}")
     return "Webhook set!", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
